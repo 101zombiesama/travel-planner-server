@@ -12,7 +12,7 @@ router.get('/logout', (req, res) => {
 
 // Google OAuth
 router.get('/google',passport.authenticate("google", {
-    scope: ['profile']
+    scope: ['profile', 'email']
 }));
 // Redirect for Google OAuth
 router.get('/google/redirect', passport.authenticate("google"), (req, res) => {
@@ -22,7 +22,9 @@ router.get('/google/redirect', passport.authenticate("google"), (req, res) => {
 
 
 // facebook OAuth
-router.get('/facebook', passport.authenticate("facebook"));
+router.get('/facebook', passport.authenticate("facebook", {
+    scope: ['email']
+}));
 // redirect for facebook OAuth
 router.get('/facebook/redirect', passport.authenticate("facebook"), (req, res) => {
     res.send(req.user);

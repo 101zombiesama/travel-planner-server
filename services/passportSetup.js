@@ -1,6 +1,7 @@
 const passport = require('passport');
+const randomstring = require('randomstring');
 const GoogleStrategy = require('passport-google-oauth20');
-const FacebookStrategy = require('passport-facebook');
+const LocalStrategy = require('passport-local');
 const User = require('../models/User');
 
 passport.serializeUser((user, done) => {
@@ -12,6 +13,8 @@ passport.deserializeUser((id, done) => {
     // deserializes the id to get a decrypted userId i.e id, finds the user with that id and user object is avaliable on req
     User.findById(id).then((user) => {
         done(null, user.id);
+    }).catch(err => {
+        console.log(err);
     });
 });
 
@@ -24,22 +27,36 @@ passport.use(
         clientSecret: process.env.GOOGLE_CLIENTSECRET
 
     }, (accessToken, refreshToken, profile, done) => {
+
         // passport callback function
-        User.findOne({ googleId: profile.id }).then((existinUser) => {
+
+        User.findOne({ email: profile._json.email })
+        .then((existinUser) => {
             if (existinUser) {
-                console.log("user already exists")
+                console.log("user already exists");
                 // user already signed up
                 done(null, existinUser);
             }
             else {
-                console.log("registering new user")
+                console.log("registering new user");
+                // create unique username from email
+                const prefix = profile._json.email.split('@')[0];
+                const suffix = randomstring.generate(6);
+                const username = prefix + '_' + suffix;
                 // register the user
                 new User({
-                    googleId: profile.id,
-                    displayName: profile.displayName
-                }).save().then((user) => {
-                    console.log(`new user registered: ${user.displayName}`);
-                    done(null, user);
+                    email: profile._json.email,
+                    name: profile._json.name,
+                    profilePicture: profile._json.picture,
+                    emailVerified: true,
+                    username: username
+                })
+                .save()
+                .then((user) => {
+                    console.log(`new user registered: ${user.name}`);
+                    done(null, user); 
+                }).catch(err => {
+                    console.log(err);
                 });
             }
         })
@@ -47,32 +64,13 @@ passport.use(
 );
 
 // facebook strategy
-passport.use(
-    new FacebookStrategy({
-
-        callbackURL: '/auth/facebook/redirect',
-        clientID: process.env.FB_CLIENTID,
-        clientSecret: process.env.FB_CLIENTSECRET
-
-    }, (accessToken, refreshToken, profile, done) => {
-        // passport callback function
-        User.findOne({ facebookId: profile.id }).then((existinUser) => {
-            if (existinUser) {
-                console.log("user already exists")
-                // user already signed up
-                done(null, existinUser);
-            }
-            else {
-                console.log("registering new user")
-                // register the user
-                new User({
-                    facebookId: profile.id,
-                    displayName: profile.displayName
-                }).save().then((user) => {
-                    console.log(`new user registered: ${user.displayName}`);
-                    done(null, user);
-                });
-            }
-        })
-    })
-);
+passport.use(new LocalStrategy(
+    (email, password, done) => {
+      User.findOne({ email: email },  (err, user) => {
+        if (err) { return done(err); }
+        if (!user) { return done(null, false); }
+        if (!user.verifyPassword(password)) { return done(null, false); }
+        return done(null, user);
+      });
+    }
+  ));
