@@ -3,6 +3,8 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const session = require('cookie-session');
 const passport = require('passport');
+const sgMail = require('@sendgrid/mail');
+
 const User = require('./models/User');
 
 const passportSetup = require('./services/passportSetup');
@@ -10,10 +12,14 @@ const authRouter = require('./routes/authRouter');
 
 const app = express();
 
+app.use(express.json());
+
 app.use(session({
     maxAge: 24*60*60*1000,
     keys: [process.env.COOKIE_KEY]
 }));
+
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
 
 app.use(passport.initialize());
 app.use(passport.session());

@@ -18,7 +18,7 @@ routes to be made:
     2. POST /auth/signup
 
         local strategy signup.
-        user will fill the form with email, username and password.
+        user will fill the form with email, username and password. (username should not contain '@' char)
 
         if email already exists in database, respond with:
             Account already exists with this email (try loggin in with email and password or with google)
