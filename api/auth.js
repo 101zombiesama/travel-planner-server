@@ -3,8 +3,9 @@ const passport = require('passport');
 const User = require('../models/User');
 const randomstring = require('randomstring');
 
-const { sendVerificationMail } = require('../helpers');
+const { sendVerificationMail, checkSignedIn } = require('../helpers');
 
+// Signup. Create user and send verification link
 router.post('/signup', (req, res, next) => {
     const { email, username, password } = req.body;
     // check if account already exists
@@ -24,16 +25,26 @@ router.post('/signup', (req, res, next) => {
             newUser.password = newUser.hashPassword(password);
             newUser.emailVerified = false;
             newUser.emailVerificationToken = randomstring.generate(20);
-            newUser.save()
-                    .then(user => {
-                        // send email for verification with verification link. /auth/signup/verify?userId=${userId}&t=${token}
-                        // ............. //
-                        sendVerificationMail(user.email, user.emailVerificationToken);
-                        res.status(200).send({ msg: "AUTH_SIGNUP_SUCCESS" });
-                    }).catch(err => {
-                        console.log(err)
-                        next(err);
-                    });
+
+            // send email for verification with verification link. /auth/signup/verify?t=${token}
+            // ............. //
+            
+            sendVerificationMail(newUser.email, newUser.emailVerificationToken)
+            .then((result) => {
+                // save user after successfully sending mail
+                newUser.save()
+                        .then(user => {
+                            res.status(200).send({ msg: "AUTH_SIGNUP_SUCCESS" });
+                            
+                        }).catch(err => {
+                            console.log(err)
+                            next(err);
+                        });
+            })
+            .catch((e) => {
+                // res.status(500).send({ msg: "SERVER_ERROR" });
+                next(e);
+            });
         
         }
 
@@ -44,7 +55,7 @@ router.post('/signup', (req, res, next) => {
 router.get('/signup/verify', async (req, res) => {
     
     const token = req.query.t;
-
+    console.log("verify is getting called")
     // find user with token
     const user = await User.findOne({ emailVerificationToken: token });
     if(user) {
@@ -58,8 +69,8 @@ router.get('/signup/verify', async (req, res) => {
 
 });
 
-
-router.post('/signin', (req, res, next) => {
+// Sign in route. Sends back the limited user data
+router.post('/signin', (req, res, next) => {    
     passport.authenticate('local', (err, user, info) => {
         if (err) {
             return next(err);
@@ -71,7 +82,9 @@ router.post('/signin', (req, res, next) => {
             if (err) {
                 return next(err);
             }
-            return res.status(200).send({ msg: "AUTH_SIGNIN_SUCCESS" });
+            const { username, email, profilePicture } = req.user;
+            const data = { username, email, profilePicture };
+            return res.status(200).send({ msg: "AUTH_SIGNIN_SUCCESS", data });
         });
     })(req, res, next);
 });
@@ -88,10 +101,19 @@ router.get('/signout', (req, res) => {
 router.get('/google',passport.authenticate("google", {
     scope: ['profile', 'email']
 }));
-// Redirect for Google OAuth
+
+// Redirect for Google OAuth. Sends back the limited user data
 router.get('/google/redirect', passport.authenticate("google"), (req, res) => {
-    // res.send(req.user);
-    res.status(200).send({ msg: "AUTH_SIGNIN_GOOGLE_SUCCESS" });
+    const { username, email, profilePicture } = req.user;
+    const data = { username, email, profilePicture };
+    res.status(200).send({ msg: "AUTH_SIGNIN_GOOGLE_SUCCESS", data });
 });
+
+// api endpoints for checking auth. Sends back the limited user data
+router.get('/check/signedin', checkSignedIn, (req, res) => {
+    const { username, email, profilePicture } = req.user;
+    const data = { username, email, profilePicture };
+    res.status(200).send({ msg: "AUTH_CHECK_SIGNEDIN_SUCCESS", data });
+})
 
 module.exports = router;

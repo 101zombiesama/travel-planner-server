@@ -16,7 +16,7 @@ passport.deserializeUser((user, done) => {
 passport.use(
     new GoogleStrategy({
 
-        callbackURL: '/auth/google/redirect',
+        callbackURL: '/api/auth/google/redirect',
         clientID: process.env.GOOGLE_CLIENTID,
         clientSecret: process.env.GOOGLE_CLIENTSECRET
 
@@ -71,11 +71,13 @@ passport.use(new LocalStrategy(
 
         // check if the username is username or password by looking for @
         const user = await User.findOne({ $or: [ { email: username }, { username: username } ] });
-        if (!user) return done(null, false, { msg: "AUTH_SIGNIN_FAIL_INVALID" });
+        if (!user) return done(null, false, { msg: "AUTH_SIGNIN_FAIL_INVALID_UsernotFound" });
         if (!user.comparePassword(password, user.password)) {
+            console.log("wrong password")
             return done(null, false, { msg: "AUTH_SIGNIN_FAIL_INVALID" });
         }
         if (!user.emailVerified) {
+            console.log("email not verified")
             return done(null, false, { msg: "AUTH_SIGNIN_FAIL_UNVERIFIED" });
         }
         return done(null, user);

@@ -4,14 +4,19 @@ const mongoose = require('mongoose');
 const session = require('cookie-session');
 const passport = require('passport');
 const sgMail = require('@sendgrid/mail');
+const cors = require('cors');
 
 const User = require('./models/User');
 
 const passportSetup = require('./services/passportSetup');
-const authRouter = require('./routes/authRouter');
+const auth = require('./api/auth');
 
 const app = express();
 
+app.use(cors({
+    origin: 'http://localhost:3000',
+    credentials: true
+}));
 app.use(express.json());
 
 app.use(session({
@@ -35,7 +40,22 @@ app.get('/', (req, res) => {
 });
 
 // auth routes
-app.use('/auth', authRouter);
+app.use('/api/auth', auth);
+
+app.use((req, res, next) => {
+    const error = new Error('Not found');
+    error.status = 404;
+    next(error);
+});
+
+app.use((error, req, res, next) => {
+    res.status(error.status || 500);
+    if(error.status == 404) {
+        res.send({ msg: "404: NOT FOUND" })
+    } else {
+        res.send({ msg: "500: INTERNAL ERROR" });
+    }
+})
 
 app.listen(process.env.PORT, () => {
     console.log(`Listening on port ${process.env.PORT}`)
