@@ -9,7 +9,8 @@ const cors = require('cors');
 const User = require('./models/User');
 
 const passportSetup = require('./services/passportSetup');
-const auth = require('./api/auth');
+
+// const auth = require('./api/auth');
 
 const app = express();
 
@@ -39,8 +40,8 @@ app.get('/', (req, res) => {
     res.send("THE SERVER IS RUNNING 😊🏃‍♀️🏃‍♀️💨");
 });
 
-// auth routes
-app.use('/api/auth', auth);
+// api routes
+app.use('/api', require('./api'));
 
 app.use((req, res, next) => {
     const error = new Error('Not found');
