@@ -36,10 +36,11 @@ const getWikiExtract = async (url, source) => {
     const $ = cheerio.load(result);
     const container = $('#mw-content-text');
     const output = container.find('.mw-parser-output');
-    const firstPara = output.find('p').not('.mw-empty-elt').first('p');
-    const secondPara = firstPara.next('p');
-    if (source === 'wikipedia') return firstPara.text();
-    if (source === 'wikivoyage') return secondPara.text();
+    const allPara = output.children('p').not('.mw-empty-elt');
+    const firstPara = allPara.eq(0).text()
+    const secondPara = allPara.eq(1).text();
+    if (source === 'wikipedia') return firstPara;
+    if (source === 'wikivoyage') return secondPara;
     
 }
 const getWikiImages = async (url) => {
@@ -78,6 +79,31 @@ const getWikiImages = async (url) => {
     
 }
 
+const getFlickrImageURL = async (id, size) => {
+    const response = await fetch(`https://www.flickr.com/services/rest/?method=flickr.photos.getSizes&api_key=${process.env.FLICKR_API_KEY}&photo_id=${id}&format=json&nojsoncallback=1`);
+    const result = await response.json();
+    const sizes = result.sizes.size;
+    const objs = sizes.filter(obj => { return obj.label == size });
+    if (objs.length <=0) return null;
+    const url = objs[0].source;
+    return url;
+}
+
+const getFlickrImagesForText = async (text, center) => {
+    const images = [];
+    const response = await fetch(`https://www.flickr.com/services/rest/?method=flickr.photos.search&api_key=${process.env.FLICKR_API_KEY}&text=${encodeURIComponent(text)}&has_geo=1&sort=relevance&lat=${center[1]}&lon=${center[0]}&radius=1&per_page=10&format=json&nojsoncallback=1`);
+    const result = await response.json();
+    const photos = result.photos.photo;
+    const photoIds =  photos.map(photo => photo.id);
+    for (let id of photoIds) {
+        const image = await getFlickrImageURL(id, 'Medium');
+        if (image) {
+            images.push(image);
+        }
+    }
+    return images;
+}
+
 // ***ROUTES***
 
 router.get('/osmdata', async (req, res, next) => {
@@ -88,8 +114,10 @@ router.get('/osmdata', async (req, res, next) => {
     res.send(geojson);
 });
 
-router.get('/details', async (req, res, next) => {
-    const { source, source_id, detail_id } = req.query;
+router.get('/details/osm', async (req, res, next) => {
+    var { source_id, detail_id } = req.query;
+
+    if(detail_id === 'null') detail_id = null;
 
     // check if data is available in db
     const detail = await Detail.findOne({ source_id: source_id });
@@ -101,137 +129,273 @@ router.get('/details', async (req, res, next) => {
 
     // if detail is not available in the db, fetch it from the detailID using appropriate web api and save to db.
     // Also save the place to db if not already
-    if (source === 'osm') {
-        // source_id = detail_id
-        // get the osm data
 
-        const id = source_id.split('/')[1];
-        const data = `[out:json];node(${id});out;`;
-        const response = await fetch(`https://overpass.kumi.systems/api/interpreter?data=${data}`);
-        const result = await response.json();
-        const tags = result.elements[0].tags;
+    // source_id = detail_id
+    // get the osm data
 
-        // get the type property by checking against the stored majorKeys.
-        const tagKeys = Object.keys(tags);
-        const place_type_arr = []
-        for (let majorKey of majorKeys) {
-            if(tagKeys.includes(majorKey)) {
-                place_type_arr.push(`${majorKey}:${tags[majorKey]}`);
-            }
+    const id = source_id.split('/')[1];
+    const data = `[out:json];node(${id});out;`;
+    const response = await fetch(`https://overpass.kumi.systems/api/interpreter?data=${data}`);
+    const result = await response.json();
+    const tags = result.elements[0].tags;
+
+    // get the type property by checking against the stored majorKeys.
+    const tagKeys = Object.keys(tags);
+    const place_type_arr = []
+    for (let majorKey of majorKeys) {
+        if(tagKeys.includes(majorKey)) {
+            place_type_arr.push(`${majorKey}:${tags[majorKey]}`);
         }
+    }
 
-        // get the description and images
-        var wikisubtitle = null;
-        var description = null;
-        var images = [];
-        if (tags.wikidata) {
+    // get the description and images
+    var wikisubtitle = null;
+    var description = null;
+    var images = [];
+    if (tags.wikidata) {
 
-            const { subtitle, wikipedia, wikivoyage, wikimedia } = await getWikidata(tags.wikidata);
-            if(subtitle) {
-                wikisubtitle = subtitle;
-            }
-            if(wikivoyage) {
-                const voyageDescription = await getWikiExtract(wikivoyage, 'wikivoyage');
-                description = voyageDescription;
-            }
-            else if (wikipedia) {
-                const wikipediaDescription = await getWikiExtract(wikipedia, 'wikipedia');
-                description = wikipediaDescription;
-            }
-            if (wikimedia) {
-                // *** GETTING IMAGES!! ***
-                // const wikimediaImages = await getWikiImages(wikimedia);
-                // images = wikimediaImages;
-            }
-
-
+        const { subtitle, wikipedia, wikivoyage, wikimedia } = await getWikidata(tags.wikidata);
+        if(subtitle) {
+            wikisubtitle = subtitle;
         }
-        // if wikipedia page is available but no wikidata!
-        if (description == null && tags.wikipedia != null) {
-            const wikipediaDescription = await getWikiExtract(`https://www.wikipedia.org/wiki/${tags.wikipedia}`, 'wikipedia');
+        if(wikivoyage) {
+            const voyageDescription = await getWikiExtract(wikivoyage, 'wikivoyage');
+            description = voyageDescription;
+        }
+        else if (wikipedia) {
+            const wikipediaDescription = await getWikiExtract(wikipedia, 'wikipedia');
             description = wikipediaDescription;
         }
-        
-        // defining other properties
-        var name_en = null;
-        var address = null;
-        var opening_hours = null;
-        var charge = null;
-        var phone = null;
-        var email = null;
-        var website = null;
-
-        if (tags['name:en']) name_en = tags['name:en'];
-        if (tags['addr:full']) address = tags['addr:full'];
-        if (tags.opening_hours) opening_hours = tags.opening_hours;
-        if(tags.charge) charge = tags.charge;
-        if (tags.phone) phone = tags.phone;
-        if (tags.email) email = tags.email;
-        if (tags.website) website = tags.website;
-        
-
-        // check if place
-        var place = await Place.findOne({ source_id: source_id });
-        if (!place) {
-
-            const newPlace = new Place({
-                source_id,
-                name: tags.name,
-                name_en,
-                center: [ result.elements[0].lon, result.elements[0].lat ],
-                category: null,
-                type: place_type_arr
-            });
-
-            // *** SAVING THE PLACE OBJECT IN DATABASE!! ***
-
-            // newPlace.save((err, place) => {
-            //     if(err) next(err);
-            //     console.log(`${place.name} place has been saved!!`)
-            // });
-
-            place = newPlace;
+        if (wikimedia) {
+            // *** GETTING IMAGES!! ***
+            // const wikimediaImages = await getWikiImages(wikimedia);
+            // images = wikimediaImages;
         }
-        
-        const detail = new Detail({
-            idPlace: place.id,
-            source: 'osm',
+
+
+    }
+    // if wikipedia page is available but no wikidata!
+    if ( description == null && tags.wikipedia) {
+        const wikipediaDescription = await getWikiExtract(`https://www.wikipedia.org/wiki/${encodeURIComponent(tags.wikipedia)}`, 'wikipedia');
+        description = wikipediaDescription;
+    }
+    
+    // defining other properties
+    var name = null;
+    var name_en = null;
+    var address = null;
+    var opening_hours = null;
+    var charge = null;
+    var phone = null;
+    var email = null;
+    var website = null;
+
+    if(tags.name) name = tags.name;
+    if (tags['name:en']) name_en = tags['name:en'];
+    if (tags['addr:full']) address = tags['addr:full'];
+    if (tags.opening_hours) opening_hours = tags.opening_hours;
+    if(tags.charge) charge = tags.charge;
+    if (tags.phone) phone = tags.phone;
+    if (tags.email) email = tags.email;
+    if (tags.website) website = tags.website;
+    
+
+    // check if place
+    var place = await Place.findOne({ source_id: source_id });
+    if (!place) {
+
+        const newPlace = new Place({
             source_id,
-            name: tags.name,
+            name,
             name_en,
-            subtitle: wikisubtitle,
-            address,
-            description,
-            type: place_type_arr,
+            center: [ result.elements[0].lon, result.elements[0].lat ],
             category: null,
-            opening_hours,
-            charge,
-            phone,
-            email,
-            website,
-            images,
-            rating: null,
-            osm_tags: tags
+            type: place_type_arr
         });
 
-        // *** SAVING THE DETAIL OBJECT IN DATABASE!! ***
+        // *** SAVING THE PLACE OBJECT IN DATABASE!!  ***
 
-        // detail.save((err, detail) => {
-        //     if (err) next(err);
-        //     console.log(`${detail.name} detail has been saved!!`)
-        // });
+        try {
+            const savedPlace = await newPlace.save();
+            console.log(`${savedPlace.name} place saved in db!`)
+            place = savedPlace;
+        } catch (error) {
+            console.log(error);
+            next(error);
+        }
 
-        res.send(detail);
+    }
+    
+    const newDetail = new Detail({
+        idPlace: place.id,
+        source: 'osm',
+        source_id,
+        center: [ result.elements[0].lon, result.elements[0].lat ],
+        name: tags.name,
+        name_en,
+        subtitle: wikisubtitle,
+        address,
+        description,
+        type: place_type_arr,
+        category: null,
+        opening_hours,
+        charge,
+        phone,
+        email,
+        website,
+        images,
+        rating: null,
+        osm_tags: tags
+    });
+
+    // *** SAVING THE DETAIL OBJECT IN DATABASE!! Saving details or each place will take a lot of storage data!!! ***
+
+    newDetail.save((err, newDetail) => {
+        if (err) next(err);
+        console.log(`${newDetail.name} newDetail has been saved!!`);
+
+        res.send(newDetail);
+
+    });
         
-
-    }
-    if (source === 'mapbox') {
-        // detail_id = wikidataID
-
-    }
-    // const images = await getWikiImages('https://commons.wikimedia.org/wiki/Category:National_Art_Center,_Tokyo');
-    // res.send(images);
      
 });
+
+router.get('/details/mapbox', async (req, res, next) => {
+    var { source_id, detail_id, convertedPlace } = req.query;
+
+    if(detail_id === 'null') detail_id = null;
+
+    const parsedPlace = JSON.parse(convertedPlace);
+
+    // check if data is available in db
+    const detail = await Detail.findOne({ source_id: source_id });
+    if (detail) {
+        res.send(detail);
+        console.log('details found from the db!')
+        return;
+    }
+
+    // if detail is not available in the db, fetch it from the detailID using appropriate web api and save to db.
+    // Also save the place to db if not already
+
+    // get the description and images
+    var wikisubtitle = null;
+    var description = null;
+    var images = [];
+    if (detail_id) {
+
+        const { subtitle, wikipedia, wikivoyage, wikimedia } = await getWikidata(detail_id);
+        if(subtitle) {
+            wikisubtitle = subtitle;
+        }
+        if(wikivoyage) {
+            const voyageDescription = await getWikiExtract(wikivoyage, 'wikivoyage');
+            description = voyageDescription;
+        }
+        else if (wikipedia) {
+            const wikipediaDescription = await getWikiExtract(wikipedia, 'wikipedia');
+            description = wikipediaDescription;
+        }
+        if (wikimedia) {
+            // *** GETTING IMAGES!! ***
+            // const wikimediaImages = await getWikiImages(wikimedia);
+            // images = wikimediaImages;
+        }
+
+
+    }
+    
+
+    // check if place
+    var place = await Place.findOne({ source_id: source_id });
+    if (!place) {
+
+        const newPlace = new Place({
+            source_id,
+            name: parsedPlace.name,
+            name_en: null,
+            center: parsedPlace.center,
+            category: null,
+            type: []
+        });
+
+        // *** SAVING THE PLACE OBJECT IN DATABASE!!  ***
+
+        try {
+            const savedPlace = await newPlace.save();
+            console.log(`${savedPlace.name} place saved in db!`)
+            place = savedPlace;
+        } catch (error) {
+            console.log(error);
+            next(error);
+        }
+
+    }
+    
+    const newDetail = new Detail({
+        idPlace: place.id,
+        source: 'mapbox',
+        source_id,
+        center: place.center,
+        name: place.name,
+        name_en: null,
+        subtitle: wikisubtitle,
+        address: null,
+        description,
+        type: place.type,
+        category: null,
+        opening_hours: null,
+        charge: null,
+        phone: null,
+        email: null,
+        website: null,
+        images: [],
+        rating: null,
+        osm_tags: null
+    });
+
+    // *** SAVING THE DETAIL OBJECT IN DATABASE!! Saving details or each place will take a lot of storage data!!! ***
+
+    newDetail.save((err, newDetail) => {
+        if (err) next(err);
+        console.log(`${newDetail.name} newDetail has been saved!!`);
+
+        res.send(newDetail);
+
+    });
+        
+     
+});
+
+router.get('/images', async (req, res, next) => {
+    const { detail_id } = req.query;
+
+    // find the detail with detail_id
+    const detail = await Detail.findById(detail_id);
+
+    if(!detail) {
+        res.send([]);
+        console.log("could not find details obj in db! for images");
+        return;
+    };
+
+    if(detail.images.length > 0) {
+        res.send(detail.images);
+        console.log('images found in DB!!!')
+    } else {
+        const images = await getFlickrImagesForText(detail.name, detail.center);
+        res.send(images);
+
+        // save the fetched images in db
+        const detailImages = detail.images;
+        detail.images = [...detailImages, ...images];
+        detail.save((err, detail) => {
+            if (err) next(err);
+        });
+    }
+
+});
+
 
 module.exports = router;

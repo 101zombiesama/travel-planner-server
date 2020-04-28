@@ -42,6 +42,11 @@ app.get('/', (req, res) => {
 
 // api routes
 app.use('/api', require('./api'));
+app.get('/test', (req, res) => {
+    setTimeout(()=> {
+        res.send('heloooo')
+    }, 5000);
+});
 
 app.use((req, res, next) => {
     const error = new Error('Not found');

@@ -5,6 +5,7 @@ const detailSchema = new Schema({
     idPlace: { type: String, ref: 'Place' },
     source: String, //'osm', 'mapbox'
     source_id: String, // 'node/1245787', 'poi.236842165'
+    center: [{type:Number}],
     name: String,
     name_en: String,
     subtitle: String,
