@@ -15,7 +15,7 @@ const passportSetup = require('./services/passportSetup');
 const app = express();
 
 app.use(cors({
-    origin: '*',
+    origin: ['http://192.168.43.19:3000'],
     credentials: true
 }));
 app.use(express.json());
