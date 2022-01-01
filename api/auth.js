@@ -1,9 +1,12 @@
+const fs = require('fs');
 const router = require('express').Router();
 const passport = require('passport');
 const User = require('../models/User');
 const randomstring = require('randomstring');
 
 const { sendVerificationMail, checkSignedIn } = require('../helpers');
+
+const googleAuthHtml = fs.readFileSync('googleAuth.html');
 
 // Signup. Create user and send verification link
 router.post('/signup', (req, res, next) => {
@@ -104,15 +107,21 @@ router.get('/google',passport.authenticate("google", {
 
 // Redirect for Google OAuth. Sends back the limited user data
 router.get('/google/redirect', passport.authenticate("google"), (req, res) => {
-    const { username, email, profilePicture } = req.user;
-    const data = { username, email, profilePicture };
-    res.status(200).send({ msg: "AUTH_SIGNIN_GOOGLE_SUCCESS", data });
+    const { username, email, profilePicture, id } = req.user;
+    const data = { username, email, profilePicture, id };
+    // console.log(req.user);
+
+    // res.status(200).send({ msg: "AUTH_SIGNIN_GOOGLE_SUCCESS", data });
+    res.setHeader("Content-Type", "text/html")
+
+    res.status(200).send(googleAuthHtml);
+
 });
 
 // api endpoints for checking auth. Sends back the limited user data
 router.get('/check/signedin', checkSignedIn, (req, res) => {
-    const { username, email, profilePicture } = req.user;
-    const data = { username, email, profilePicture };
+    const { username, email, profilePicture, id } = req.user;
+    const data = { username, email, profilePicture, id };
     res.status(200).send({ msg: "AUTH_CHECK_SIGNEDIN_SUCCESS", data });
 })
 

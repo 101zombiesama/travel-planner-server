@@ -10,15 +10,19 @@ const User = require('./models/User');
 
 const passportSetup = require('./services/passportSetup');
 
+const { monitor } = require('./helpers');
+
+
 // const auth = require('./api/auth');
 
 const app = express();
 
 app.use(cors({
-    origin: ['http://192.168.43.19:3000', 'https://travel-planner01.netlify.app'],
+    origin: ['http://192.168.43.19:3000', 'https://travel-planner01.netlify.app', 'http://localhost:3000', 'http://192.168.0.102:3000'],
     credentials: true
 }));
-app.use(express.json());
+
+app.use(express.json({ limit: 10485760 }));
 
 app.use(session({
     maxAge: 24*60*60*1000,
@@ -42,10 +46,13 @@ app.get('/', (req, res) => {
 
 // api routes
 app.use('/api', require('./api'));
-app.get('/test', (req, res) => {
-    setTimeout(()=> {
-        res.send('heloooo')
-    }, 5000);
+app.get('/monitor/start', (req, res) => {
+    monitor.startMonitor();
+    res.status(200).send({ msg: "MONITOR_STARTED", data: null });
+});
+app.get('/monitor/stop', (req, res) => {
+    const result = monitor.stopMonitor();
+    res.status(200).send({ msg: "MONITOR_STOPPED", data: result });
 });
 
 app.use((req, res, next) => {
@@ -60,9 +67,11 @@ app.use((error, req, res, next) => {
         res.send({ msg: "404: NOT FOUND" })
     } else {
         res.send({ msg: "500: INTERNAL ERROR" });
+        console.log(error);
     }
 })
 
 app.listen(process.env.PORT, () => {
     console.log(`Listening on port ${process.env.PORT}`)
 });
+

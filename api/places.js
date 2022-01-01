@@ -376,13 +376,13 @@ router.get('/images', async (req, res, next) => {
 
     if(!detail) {
         res.send([]);
-        console.log("could not find details obj in db! for images");
+        
         return;
     };
 
     if(detail.images.length > 0) {
         res.send(detail.images);
-        console.log('images found in DB!!!')
+        
     } else {
         const images = await getFlickrImagesForText(detail.name, detail.center);
         res.send(images);
